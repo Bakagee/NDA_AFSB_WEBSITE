@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jun 01, 2025 at 04:20 PM
+-- Generation Time: Jun 02, 2025 at 05:23 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -46,6 +46,7 @@ DELIMITER ;
 CREATE TABLE `activity_logs` (
   `log_id` int(11) NOT NULL,
   `user_id` int(11) DEFAULT NULL,
+  `user_type` varchar(20) DEFAULT NULL,
   `user_role` varchar(20) NOT NULL,
   `activity_type` varchar(50) NOT NULL,
   `activity_details` text NOT NULL,
@@ -57,10 +58,14 @@ CREATE TABLE `activity_logs` (
 -- Dumping data for table `activity_logs`
 --
 
-INSERT INTO `activity_logs` (`log_id`, `user_id`, `user_role`, `activity_type`, `activity_details`, `ip_address`, `created_at`) VALUES
-(1, NULL, 'officer', 'login_failed', 'Failed login attempt for username: officer1', '::1', '2025-04-19 16:10:11'),
-(2, NULL, 'officer', 'login_failed', 'Failed login attempt for username: officer1', '::1', '2025-04-19 16:10:33'),
-(3, NULL, 'officer', 'login_failed', 'Failed login attempt for username: officer1', '::1', '2025-04-19 16:11:18');
+INSERT INTO `activity_logs` (`log_id`, `user_id`, `user_type`, `user_role`, `activity_type`, `activity_details`, `ip_address`, `created_at`) VALUES
+(1, NULL, NULL, 'officer', 'login_failed', 'Failed login attempt for username: officer1', '::1', '2025-04-19 16:10:11'),
+(2, NULL, NULL, 'officer', 'login_failed', 'Failed login attempt for username: officer1', '::1', '2025-04-19 16:10:33'),
+(3, NULL, NULL, 'officer', 'login_failed', 'Failed login attempt for username: officer1', '::1', '2025-04-19 16:11:18'),
+(4, 2, 'admin', 'admin', 'toggled stage status', 'Stage ID: 1', '::1', '2025-06-02 15:21:41'),
+(5, 2, 'admin', 'admin', 'toggled stage status', 'Stage ID: 1', '::1', '2025-06-02 15:21:43'),
+(6, 2, 'admin', 'admin', 'toggled stage status', 'Stage ID: 1', '::1', '2025-06-02 15:22:28'),
+(7, 2, 'admin', 'admin', 'toggled stage status', 'Stage ID: 1', '::1', '2025-06-02 15:23:08');
 
 -- --------------------------------------------------------
 
@@ -88,7 +93,7 @@ CREATE TABLE `admins` (
 --
 
 INSERT INTO `admins` (`admin_id`, `username`, `password`, `full_name`, `email`, `phone`, `profile_image`, `role`, `last_login`, `status`, `created_at`, `updated_at`) VALUES
-(2, 'admin', '$2y$10$F5R034TTw0X6cQnFXuCpdObaq9JQAn44m4ow7glQEmeZt0pi4Yz3G', 'UMAR ABDULLAHI', 'admin@gmail.com', '+2349022698720', 'admin.png', 'admin', '2025-04-20 14:34:18', 'active', '2025-04-19 20:05:57', '2025-04-20 13:34:18');
+(2, 'admin', '$2y$10$F5R034TTw0X6cQnFXuCpdObaq9JQAn44m4ow7glQEmeZt0pi4Yz3G', 'UMAR ABDULLAHI', 'admin@gmail.com', '+2349022698720', 'admin.png', 'admin', '2025-06-02 12:07:03', 'active', '2025-04-19 20:05:57', '2025-06-02 11:07:03');
 
 -- --------------------------------------------------------
 
@@ -380,7 +385,7 @@ CREATE TABLE `officers` (
 --
 
 INSERT INTO `officers` (`officer_id`, `username`, `password`, `rank`, `full_name`, `email`, `phone`, `assigned_state`, `profile_image`, `role`, `last_login`, `status`, `created_by`, `created_at`, `updated_at`) VALUES
-(3, 'officer1', '$2y$10$rW0t/yzJPB/BNimuifG3Wu/hrz986glgNggeWzXbHAaZ9KVXwPrmC', 'Captain', 'UMAR ABDULLAHI', 'umarfaroukk77@gmail.com', '09033445566', 'Abia', 'default_officer.png', 'officer', '2025-06-01 15:06:22', 'active', NULL, '2025-04-19 16:29:52', '2025-06-01 14:06:22');
+(3, 'officer1', '$2y$10$rW0t/yzJPB/BNimuifG3Wu/hrz986glgNggeWzXbHAaZ9KVXwPrmC', 'Captain', 'UMAR ABDULLAHI', 'umarfaroukk77@gmail.com', '09033445566', 'Abia', 'default_officer.png', 'officer', '2025-06-02 16:22:18', 'active', NULL, '2025-04-19 16:29:52', '2025-06-02 15:22:18');
 
 -- --------------------------------------------------------
 
@@ -459,6 +464,18 @@ INSERT INTO `screening_forms` (`id`, `candidate_id`, `file_path`, `ocr_text`, `p
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `screening_stages`
+--
+
+CREATE TABLE `screening_stages` (
+  `stage_id` int(11) NOT NULL,
+  `stage_name` varchar(50) NOT NULL,
+  `is_active` tinyint(1) DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `stages`
 --
 
@@ -467,19 +484,20 @@ CREATE TABLE `stages` (
   `stage_name` enum('documentation','medical','physical','sand_modelling','interview') NOT NULL,
   `display_name` varchar(50) NOT NULL,
   `description` text DEFAULT NULL,
-  `sequence_number` int(11) NOT NULL
+  `sequence_number` int(11) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `stages`
 --
 
-INSERT INTO `stages` (`id`, `stage_name`, `display_name`, `description`, `sequence_number`) VALUES
-(1, 'documentation', 'Documentation Verification', 'Initial verification of candidate documents and credentials', 1),
-(2, 'medical', 'Medical Examination', 'Health assessment and medical fitness evaluation', 2),
-(3, 'physical', 'Physical Assessment', 'Physical fitness and endurance testing', 3),
-(4, 'sand_modelling', 'Sand Modelling', 'Spatial awareness and creative problem-solving assessment', 4),
-(5, 'interview', 'Board Interview', 'Final interview with the selection board', 5);
+INSERT INTO `stages` (`id`, `stage_name`, `display_name`, `description`, `sequence_number`, `is_active`) VALUES
+(1, 'documentation', 'Documentation Verification', 'Initial verification of candidate documents and credentials', 1, 1),
+(2, 'medical', 'Medical Examination', 'Health assessment and medical fitness evaluation', 2, 1),
+(3, 'physical', 'Physical Assessment', 'Physical fitness and endurance testing', 3, 1),
+(4, 'sand_modelling', 'Sand Modelling', 'Spatial awareness and creative problem-solving assessment', 4, 1),
+(5, 'interview', 'Board Interview', 'Final interview with the selection board', 5, 1);
 
 -- --------------------------------------------------------
 
@@ -653,6 +671,12 @@ ALTER TABLE `screening_forms`
   ADD KEY `processed_by` (`processed_by`);
 
 --
+-- Indexes for table `screening_stages`
+--
+ALTER TABLE `screening_stages`
+  ADD PRIMARY KEY (`stage_id`);
+
+--
 -- Indexes for table `stages`
 --
 ALTER TABLE `stages`
@@ -674,7 +698,7 @@ ALTER TABLE `states`
 -- AUTO_INCREMENT for table `activity_logs`
 --
 ALTER TABLE `activity_logs`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `admins`

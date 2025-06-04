@@ -28,46 +28,155 @@ function getAdminDetails($admin_id) {
 }
 
 /**
- * Get candidate count
+ * Get screening statistics
  */
-function getCandidateCount() {
+function getScreeningStatistics() {
     $conn = connectDB();
-    $result = $conn->query("SELECT COUNT(*) as count FROM candidates");
-    $count = 0;
-    if ($result && $row = $result->fetch_assoc()) {
-        $count = $row['count'];
+    $stats = array();
+    
+    // Total Candidates
+    $sql = "SELECT COUNT(*) as total FROM candidates";
+    $result = $conn->query($sql);
+    $stats['total_candidates'] = $result->fetch_assoc()['total'];
+    
+    // Documentation Disqualified
+    $sql = "SELECT COUNT(*) as doc_disqualified FROM candidate_stages 
+            WHERE stage_id = 1 AND status = 'failed'";
+    $result = $conn->query($sql);
+    $stats['doc_disqualified'] = $result->fetch_assoc()['doc_disqualified'];
+    
+    // Medical Disqualified
+    $sql = "SELECT COUNT(*) as medical_disqualified FROM candidate_stages 
+            WHERE stage_id = 2 AND status = 'failed'";
+    $result = $conn->query($sql);
+    $stats['medical_disqualified'] = $result->fetch_assoc()['medical_disqualified'];
+    
+    // Get final candidates score
+    $sql = "SELECT 
+                COUNT(*) as total_passed,
+                SUM(CASE WHEN cs1.status = 'passed' THEN 1 ELSE 0 END) as doc_passed,
+                SUM(CASE WHEN cs2.status = 'passed' THEN 1 ELSE 0 END) as medical_passed,
+                SUM(CASE WHEN cs3.status = 'passed' THEN 1 ELSE 0 END) as physical_passed,
+                SUM(CASE WHEN cs4.status = 'passed' THEN 1 ELSE 0 END) as sand_passed,
+                SUM(CASE WHEN cs5.status = 'passed' THEN 1 ELSE 0 END) as board_passed
+            FROM candidates c
+            LEFT JOIN candidate_stages cs1 ON c.candidate_id = cs1.candidate_id AND cs1.stage_id = 1
+            LEFT JOIN candidate_stages cs2 ON c.candidate_id = cs2.candidate_id AND cs2.stage_id = 2
+            LEFT JOIN candidate_stages cs3 ON c.candidate_id = cs3.candidate_id AND cs3.stage_id = 3
+            LEFT JOIN candidate_stages cs4 ON c.candidate_id = cs4.candidate_id AND cs4.stage_id = 4
+            LEFT JOIN candidate_stages cs5 ON c.candidate_id = cs5.candidate_id AND cs5.stage_id = 5";
+    $result = $conn->query($sql);
+    $stats['final_scores'] = $result->fetch_assoc();
+    
+    // Get stage statuses
+    $sql = "SELECT stage_id, is_active FROM screening_stages ORDER BY stage_id";
+    $result = $conn->query($sql);
+    $stats['stage_statuses'] = array();
+    while ($row = $result->fetch_assoc()) {
+        $stats['stage_statuses'][$row['stage_id']] = $row['is_active'];
     }
+    
     $conn->close();
-    return $count;
+    return $stats;
 }
 
 /**
- * Get officers count
+ * Get candidate screening status by state
  */
-function getOfficersCount() {
+function getCandidateScreeningStatus($state = null) {
     $conn = connectDB();
-    $result = $conn->query("SELECT COUNT(*) as count FROM officers");
-    $count = 0;
-    if ($result && $row = $result->fetch_assoc()) {
-        $count = $row['count'];
+    $sql = "SELECT 
+                c.candidate_id,
+                c.chest_number,
+                CONCAT(c.first_name, ' ', c.surname, IF(c.other_name IS NOT NULL, CONCAT(' ', c.other_name), '')) as full_name,
+                s.state_name as state,
+                c.status as final_status,
+                cs1.status as documentation_status,
+                cs2.status as medical_status,
+                cs3.status as physical_status,
+                cs4.status as sand_modelling_status,
+                cs5.status as board_interview_status
+            FROM candidates c
+            JOIN states s ON c.state_id = s.id
+            LEFT JOIN candidate_stages cs1 ON c.candidate_id = cs1.candidate_id AND cs1.stage_id = 1
+            LEFT JOIN candidate_stages cs2 ON c.candidate_id = cs2.candidate_id AND cs2.stage_id = 2
+            LEFT JOIN candidate_stages cs3 ON c.candidate_id = cs3.candidate_id AND cs3.stage_id = 3
+            LEFT JOIN candidate_stages cs4 ON c.candidate_id = cs4.candidate_id AND cs4.stage_id = 4
+            LEFT JOIN candidate_stages cs5 ON c.candidate_id = cs5.candidate_id AND cs5.stage_id = 5";
+    
+    if ($state) {
+        $sql .= " WHERE s.state_name = ? OR s.state_code = ?";
     }
+    
+    $sql .= " ORDER BY c.chest_number";
+    
+    $stmt = $conn->prepare($sql);
+    if ($state) {
+        $stmt->bind_param("ss", $state, $state);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $stmt->close();
     $conn->close();
-    return $count;
+    return $result;
 }
 
-// Get counts for dashboard
-$candidate_count = getCandidateCount();
-$officers_count = getOfficersCount();
-
-// Current time greeting
-$hour = date('H');
-if ($hour >= 5 && $hour < 12) {
-    $greeting = "Good Morning";
-} elseif ($hour >= 12 && $hour < 18) {
-    $greeting = "Good Afternoon";
-} else {
-    $greeting = "Good Evening";
+/**
+ * Get recent activity log
+ */
+function getRecentActivityLog($limit = 10) {
+    $conn = connectDB();
+    $sql = "SELECT 
+                al.log_id,
+                al.user_type,
+                al.activity_type,
+                al.activity_details,
+                al.created_at,
+                COALESCE(a.username, o.username) as username
+            FROM activity_logs al
+            LEFT JOIN admins a ON al.user_id = a.admin_id AND al.user_type = 'admin'
+            LEFT JOIN officers o ON al.user_id = o.officer_id AND al.user_type = 'officer'
+            ORDER BY al.created_at DESC
+            LIMIT ?";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $limit);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $stmt->close();
+    $conn->close();
+    return $result;
 }
+
+/**
+ * Get screening officers
+ */
+function getScreeningOfficers() {
+    $conn = connectDB();
+    $sql = "SELECT 
+                o.officer_id,
+                o.username,
+                o.full_name,
+                o.rank,
+                o.assigned_state,
+                o.last_login,
+                o.status
+            FROM officers o
+            WHERE o.status = 'active'
+            ORDER BY o.assigned_state, o.username";
+    
+    $result = $conn->query($sql);
+    $conn->close();
+    return $result;
+}
+
+// Get statistics and data for dashboard
+$stats = getScreeningStatistics();
+$candidates = getCandidateScreeningStatus();
+$activity_log = getRecentActivityLog();
+$officers = getScreeningOfficers();
+
+
 ?>
 
 <!DOCTYPE html>
@@ -83,13 +192,8 @@ if ($hour >= 5 && $hour < 12) {
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     
-    <!-- Animate.css -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
-    
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     
     <style>
         :root {
@@ -98,16 +202,11 @@ if ($hour >= 5 && $hour < 12) {
             --accent-color: #F7D774;
             --dark-color: #1F1F1F;
             --light-color: #F8F9FA;
-            --grey-color: #D9D9D9;
-            --slate-blue: #2B3D54;
-            --success-color: #2DC26C;
-            --warning-color: #FFCB05;
         }
         
         body {
             font-family: 'Poppins', sans-serif;
             background-color: #f5f7fa;
-            color: var(--dark-color);
             padding-top: 60px;
         }
         
@@ -118,248 +217,261 @@ if ($hour >= 5 && $hour < 12) {
         
         .navbar-brand {
             font-weight: 600;
-            display: flex;
-            align-items: center;
             color: var(--light-color) !important;
         }
         
-        .navbar-brand img {
-            height: 30px;
-            margin-right: 10px;
-        }
-        
-        .navbar-dark .navbar-nav .nav-link {
-            color: rgba(255, 255, 255, 0.85);
-            transition: color 0.3s ease;
-            font-weight: 500;
-        }
-        
-        .navbar-dark .navbar-nav .nav-link:hover {
-            color: var(--accent-color);
-        }
-        
-        .navbar-dark .navbar-nav .active > .nav-link {
-            color: var(--accent-color);
-        }
-        
-        .profile-image {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--accent-color);
-            transition: all 0.3s ease;
-        }
-        
-        .profile-image:hover {
-            transform: scale(1.05);
-        }
-        
-        .dropdown-menu {
-            border-radius: 0.5rem;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-            border: none;
-            animation: fadeIn 0.3s ease;
-            border-top: 3px solid var(--accent-color);
-        }
-        
-        .dropdown-item {
-            padding: 0.5rem 1.5rem;
-            transition: background-color 0.2s ease;
-            font-weight: 500;
-        }
-        
-        .dropdown-item:active {
-            background-color: var(--primary-color);
-        }
-        
-        .dropdown-header {
-            font-weight: 600;
-            color: var(--slate-blue);
-        }
-        
-        .btn-logout {
-            color: var(--secondary-color);
-        }
-        
-        .welcome-section {
-            background-color: white;
-            border-radius: 1rem;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.05);
-            animation: fadeInUp 0.5s ease;
-            border-left: 5px solid var(--primary-color);
-        }
-        
-        .welcome-title {
-            color: var(--primary-color);
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            font-size: 1.8rem;
-        }
-        
         .stats-card {
-            border-radius: 1rem;
-            box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.05);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            height: 100%;
-            cursor: pointer;
-            overflow: hidden;
-            border: none;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
         }
         
         .stats-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
         }
         
-        .card-img-overlay {
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 1rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
         }
         
-        .action-card {
-            border: none;
-            border-radius: 1rem;
-            overflow: hidden;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            height: 100%;
-            margin-bottom: 1.5rem;
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
         }
         
-        .action-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
-        }
-        
-        .action-card .card-header {
-            background-color: var(--primary-color);
-            color: white;
-            font-weight: 600;
-            padding: 1rem 1.5rem;
-        }
-        
-        .action-card .card-body {
-            padding: 1.5rem;
-        }
-        
-        .action-card .icon {
-            font-size: 3rem;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-            transition: transform 0.3s ease;
-        }
-        
-        .action-card:hover .icon {
-            transform: scale(1.1);
-            color: var(--secondary-color);
-        }
-        
-        .action-card .btn {
-            border-radius: 2rem;
-            padding: 0.5rem 1.5rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-        
-        .action-card .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .action-card .btn-primary:hover {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-            transform: translateY(-2px);
-            box-shadow: 0 0.3rem 0.5rem rgba(0, 0, 0, 0.1);
-        }
-        
-        .section-title {
-            color: var(--slate-blue);
-            font-weight: 600;
-            position: relative;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        
-        .section-title:after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 50px;
-            height: 3px;
-            background-color: var(--accent-color);
-        }
-        
-        .footer {
-            background-color: var(--slate-blue);
-            padding: 1.5rem 0;
-            margin-top: 2rem;
-            text-align: center;
-            color: var(--light-color);
+        .stat-label {
+            color: #666;
             font-size: 0.9rem;
         }
         
-        /* Custom Card Colors */
-        .bg-candidates {
-            background-color: var(--slate-blue);
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 500;
         }
         
-        .bg-officers {
-            background-color: var(--primary-color);
+        .status-passed {
+            background-color: #d4edda;
+            color: #155724;
         }
         
-        .bg-stages {
-            background-color: var(--secondary-color);
+        .status-failed {
+            background-color: #f8d7da;
+            color: #721c24;
         }
         
-        .bg-states {
-            background-color: var(--warning-color);
-            color: var(--dark-color) !important;
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
         }
         
-        .bg-states .card-title {
-            color: var(--dark-color) !important;
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        .activity-log {
+            max-height: 400px;
+            overflow-y: auto;
         }
         
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
+        .activity-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        
+        .report-card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .report-card:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .report-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .btn-export {
+            margin-top: 10px;
+        }
+        
+        .clickable-card {
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-bottom: 1rem;
+        }
+        
+        .clickable-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .activity-log {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .activity-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .dashboard-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 2.5rem;
+            margin-top: 2rem;
+        }
+
+        .cards-section {
+            flex: 2 1 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 2.5rem;
+        }
+
+        .cards-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2.5rem;
+        }
+
+        .colorful-card {
+            min-width: 220px;
+            max-width: 260px;
+            min-height: 90px;
+            max-height: 110px;
+            border-radius: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.13rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: box-shadow 0.15s;
+            text-align: center;
+            padding: 1.5rem 1rem;
+            color: #fff;
+            background: #007A33;
+        }
+        .colorful-card.card-green { background: #007A33; }
+        .colorful-card.card-red { background: #C8102E; }
+        .colorful-card.card-yellow { background: #FFD100; color: #222; }
+        .colorful-card.card-grey { background: #e0eafc; color: #222; }
+        .colorful-card.card-purple { background: #fbc2eb; color: #222; }
+        .colorful-card.card-orange { background: #FFD100; color: #222; }
+        .colorful-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+        }
+        .colorful-card .card-title {
+            font-size: 1.13rem;
+            font-weight: 600;
+            margin-bottom: 0;
+            letter-spacing: 0.01em;
+        }
+
+        .stages-card {
+            min-width: 260px;
+            background: #f5f5f5;
+            border-radius: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            align-items: stretch;
+        }
+        .stages-title {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+        .stage-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.7rem;
+        }
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .toggle-btn {
+            width: 38px;
+            height: 22px;
+            border-radius: 12px;
+            background: #eee;
+            position: relative;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-left: 0.5rem;
+        }
+        .toggle-btn.on {
+            background: #2ecc40;
+        }
+        .toggle-btn.off {
+            background: #ff4136;
+        }
+        .toggle-dot {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            transition: left 0.2s;
+        }
+        .toggle-btn.on .toggle-dot {
+            left: 19px;
+        }
+        .toggle-label {
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin-left: 0.5rem;
+        }
+        @media (max-width: 900px) {
+            .dashboard-container {
+                flex-direction: column;
+                align-items: stretch;
             }
-            to {
-                opacity: 1;
-                transform: translateY(0);
+            .stages-card {
+                margin: 0 auto;
             }
-        }
-        
-        .animate-fadeIn {
-            animation: fadeIn 0.5s ease;
-        }
-        
-        .animate-fadeInUp {
-            animation: fadeInUp 0.5s ease;
-        }
-        
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .welcome-section {
-                padding: 1.5rem;
-            }
-            
-            .action-card {
-                margin-bottom: 1rem;
+            .cards-row {
+                flex-direction: column;
+                gap: 1.5rem;
+                align-items: center;
             }
         }
     </style>
@@ -369,36 +481,35 @@ if ($hour >= 5 && $hour < 12) {
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container">
             <a class="navbar-brand" href="dashboard.php">
-                <img src="../img/nda-logo.png" alt="NDA Logo" onerror="this.src='../img/placeholder-logo.png'">
-                <span>AFSB Admin</span>
+                <img src="../img/nda-logo.png" alt="NDA Logo" height="30" class="mr-2">
+                AFSB Admin
             </a>
             
-            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ml-auto align-items-center">
+                <ul class="navbar-nav ml-auto">
                     <li class="nav-item active">
-                        <a class="nav-link" href="dashboard.php"><i class="fas fa-home mr-1"></i> Dashboard</a>
+                        <a class="nav-link" href="dashboard.php">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="manage_candidates.php"><i class="fas fa-users mr-1"></i> Candidates</a>
+                        <a class="nav-link" href="manage_candidates.php">Candidates</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="manage_officers.php"><i class="fas fa-user-shield mr-1"></i> Officers</a>
+                        <a class="nav-link" href="manage_officers.php">Officers</a>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="profileDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                            <img src="../img/<?php echo htmlspecialchars($admin['profile_image'] ?: 'default_admin.png'); ?>" alt="Profile" class="profile-image mr-2" onerror="this.src='../img/default_admin.png'">
-                            <span class="d-none d-md-inline"><?php echo htmlspecialchars($admin['username']); ?></span>
+                        <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-toggle="dropdown">
+                            <img src="../img/<?php echo htmlspecialchars($admin['profile_image']); ?>" alt="Profile" class="rounded-circle mr-2" width="30" height="30">
+                            <?php echo htmlspecialchars($admin['username']); ?>
                         </a>
-                        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="profileDropdown">
-                            <h6 class="dropdown-header"><?php echo htmlspecialchars($admin['full_name']); ?></h6>
-                            <a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle mr-2"></i> My Profile</a>
-                            <a class="dropdown-item" href="settings.php"><i class="fas fa-cog mr-2"></i> Settings</a>
+                        <div class="dropdown-menu dropdown-menu-right">
+                            <a class="dropdown-item" href="profile.php">Profile</a>
+                            <a class="dropdown-item" href="settings.php">Settings</a>
                             <div class="dropdown-divider"></div>
-                            <a class="dropdown-item btn-logout" href="../logout.php"><i class="fas fa-sign-out-alt mr-2"></i> Logout</a>
+                            <a class="dropdown-item" href="../logout.php">Logout</a>
                         </div>
                     </li>
                 </ul>
@@ -408,144 +519,94 @@ if ($hour >= 5 && $hour < 12) {
 
     <!-- Main Content -->
     <div class="container my-4">
-        <!-- Welcome Section -->
-        <div class="welcome-section animate-fadeInUp">
-            <h2 class="welcome-title"><?php echo $greeting; ?>, <?php echo htmlspecialchars($admin['full_name']); ?>!</h2>
-            
-            <div class="row mt-4">
-                <div class="col-md-6 col-lg-3 mb-4 animate-fadeIn" style="animation-delay: 0.1s">
-                    <div class="card text-white stats-card bg-candidates">
-                        <div class="card-img-overlay d-flex flex-column justify-content-end">
-                            <h5 class="card-title">Total Candidates</h5>
-                            <p class="card-text display-4"><?php echo $candidate_count; ?></p>
-                        </div>
+        <div class="dashboard-container">
+            <div class="cards-section">
+                <div class="cards-row">
+                    <div class="colorful-card card-green" onclick="window.location.href='manage_candidates.php'">
+                        <div class="card-title">Total Candidates</div>
+                    </div>
+                    <div class="colorful-card card-red" onclick="window.location.href='disqualified_candidates.php'">
+                        <div class="card-title">Disqualified Candidates</div>
+                    </div>
+                    <div class="colorful-card card-yellow" onclick="window.location.href='manage_stages.php'">
+                        <div class="card-title">Manage Screening Stages</div>
                     </div>
                 </div>
-                
-                <div class="col-md-6 col-lg-3 mb-4 animate-fadeIn" style="animation-delay: 0.2s">
-                    <div class="card text-white stats-card bg-officers">
-                        <div class="card-img-overlay d-flex flex-column justify-content-end">
-                            <h5 class="card-title">Active Officers</h5>
-                            <p class="card-text display-4"><?php echo $officers_count; ?></p>
-                        </div>
+                <div class="cards-row">
+                    <div class="colorful-card card-grey" onclick="window.location.href='manage_officers.php'">
+                        <div class="card-title">Manage officers</div>
                     </div>
-                </div>
-                
-                <div class="col-md-6 col-lg-3 mb-4 animate-fadeIn" style="animation-delay: 0.3s">
-                    <div class="card text-white stats-card bg-stages">
-                        <div class="card-img-overlay d-flex flex-column justify-content-end">
-                            <h5 class="card-title">Ongoing Stages</h5>
-                            <p class="card-text display-4">5</p>
-                        </div>
+                    <div class="colorful-card card-green" onclick="window.location.href='final_scores.php'">
+                        <div class="card-title">Final Screened Candidates</div>
                     </div>
-                </div>
-                
-                <div class="col-md-6 col-lg-3 mb-4 animate-fadeIn" style="animation-delay: 0.4s">
-                    <div class="card text-white stats-card bg-states">
-                        <div class="card-img-overlay d-flex flex-column justify-content-end">
-                            <h5 class="card-title">Participating States</h5>
-                            <p class="card-text display-4">37</p>
-                        </div>
+                    <div class="colorful-card card-purple" onclick="window.location.href='#recent-activity'">
+                        <div class="card-title">Recent activity</div>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Action Cards -->
-        <h4 class="section-title animate-fadeInUp" style="animation-delay: 0.5s">Quick Actions</h4>
-        
-        <div class="row">
-            <!-- Add Candidate Card -->
-            <div class="col-md-6 col-lg-4 animate-fadeInUp" style="animation-delay: 0.6s">
-                <div class="card action-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>Add Candidate</span>
-                        <i class="fas fa-user-plus"></i>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="icon">
-                            <i class="fas fa-user-plus"></i>
+
+        <!-- Recent Activity -->
+        <div class="row mt-4" id="recent-activity">
+            <div class="col-12">
+                <h4>Recent Activity</h4>
+                <div class="activity-log">
+                    <?php while ($activity = $activity_log->fetch_assoc()): ?>
+                    <div class="activity-item">
+                        <div class="d-flex justify-content-between">
+                            <strong><?php echo htmlspecialchars($activity['username']); ?></strong>
+                            <small class="text-muted"><?php echo date('M d, Y H:i', strtotime($activity['created_at'])); ?></small>
                         </div>
-                        <h5 class="card-title">Register New Candidate</h5>
-                        <p class="card-text">Add a new candidate to the AFSB screening system</p>
-                        <a href="add_candidate.php" class="btn btn-primary mt-3">Add Candidate</a>
+                        <div><?php echo htmlspecialchars($activity['activity_type']); ?></div>
+                        <small class="text-muted"><?php echo htmlspecialchars($activity['activity_details']); ?></small>
                     </div>
-                </div>
-            </div>
-            
-            <!-- View Candidates Card -->
-            <div class="col-md-6 col-lg-4 animate-fadeInUp" style="animation-delay: 0.7s">
-                <div class="card action-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>View Candidates</span>
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="icon">
-                            <i class="fas fa-users"></i>
-                        </div>
-                        <h5 class="card-title">Manage Candidates</h5>
-                        <p class="card-text">View, edit, and manage all registered candidates</p>
-                        <a href="manage_candidates.php" class="btn btn-primary mt-3">View All Candidates</a>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Add Officer Card -->
-            <div class="col-md-6 col-lg-4 animate-fadeInUp" style="animation-delay: 0.8s">
-                <div class="card action-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>Manage Officers</span>
-                        <i class="fas fa-user-shield"></i>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="icon">
-                            <i class="fas fa-user-shield"></i>
-                        </div>
-                        <h5 class="card-title">Screening Officers</h5>
-                        <p class="card-text">Add, edit, or manage screening officers</p>
-                        <a href="manage_officers.php" class="btn btn-primary mt-3">Manage Officers</a>
-                    </div>
+                    <?php endwhile; ?>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <p>Nigerian Defence Academy | Armed Forces Selection Board | Admin Portal</p>
-            <p class="mb-0">&copy; <?php echo date('Y'); ?> NDA AFSB Screening System. All Rights Reserved.</p>
-        </div>
-    </footer>
 
     <!-- JavaScript Libraries -->
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
     
     <script>
         $(document).ready(function() {
-            // Tooltip initialization
-            $('[data-toggle="tooltip"]').tooltip();
-            
-            // Animation for cards with delay
-            setTimeout(function() {
-                $('.stats-card').addClass('animate__animated animate__fadeIn');
-            }, 300);
-            
-            setTimeout(function() {
-                $('.action-card').addClass('animate__animated animate__fadeInUp');
-            }, 600);
-            
-            // Dropdown animation
-            $('.dropdown').on('show.bs.dropdown', function() {
-                $(this).find('.dropdown-menu').first().stop(true, true).slideDown(200);
-            });
-            $('.dropdown').on('hide.bs.dropdown', function() {
-                $(this).find('.dropdown-menu').first().stop(true, true).slideUp(100);
+            // Initialize DataTable for rankings
+            $('#rankingsTable').DataTable({
+                responsive: true,
+                order: [[0, 'asc']],
+                pageLength: 10,
+                searching: false,
+                lengthChange: false
             });
         });
+
+        function toggleStage(stageId, event) {
+            event.stopPropagation();
+            fetch('toggle_stage.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'stage_id=' + stageId
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while updating the stage status.');
+            });
+        }
     </script>
 </body>
 </html>
