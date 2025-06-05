@@ -380,19 +380,7 @@ function getMedicalScreeningData($candidate_id) {
                         <a class="nav-link" href="dashboard.php">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="documentation.php">Documentation</a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link active" href="medical.php">Medical</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="physical.php">Physical</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="sand_modelling.php">Sand Modelling</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="board_interview.php">Board Interview</a>
                     </li>
                 </ul>
                 <div class="d-flex align-items-center">

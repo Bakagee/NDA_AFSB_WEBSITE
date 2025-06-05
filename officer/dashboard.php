@@ -118,12 +118,21 @@ function getStageStatistics($state) {
     $conn = connectDB();
     
     $stages = [
-        'documentation' => ['total' => 0],
-        'medical' => ['total' => 0],
-        'physical' => ['total' => 0],
-        'sand_modelling' => ['total' => 0],
-        'interview' => ['total' => 0]
+        'documentation' => ['total' => 0, 'is_active' => true],
+        'medical' => ['total' => 0, 'is_active' => true],
+        'physical' => ['total' => 0, 'is_active' => true],
+        'sand_modelling' => ['total' => 0, 'is_active' => true],
+        'interview' => ['total' => 0, 'is_active' => true]
     ];
+    
+    // Get stage statuses
+    $sql = "SELECT stage_name, is_active FROM stages";
+    $result = $conn->query($sql);
+    while ($row = $result->fetch_assoc()) {
+        if (isset($stages[$row['stage_name']])) {
+            $stages[$row['stage_name']]['is_active'] = (bool)$row['is_active'];
+        }
+    }
     
     // Get stage statistics
     $sql = "SELECT st.stage_name, COUNT(DISTINCT c.candidate_id) as count
@@ -792,190 +801,108 @@ if ($hour >= 5 && $hour < 12) {
                 </a>
             </div>
             
-            <!-- Documentation Stage Card -->
-            <div class="col-md-6 col-lg-4" style="animation-delay: 0.6s">
-                <a href="documentation.php" class="stage-card">
-                    <div class="card-header documentation-header">
+            <?php
+            $stages = [
+                'documentation' => [
+                    'title' => 'Documentation Stage',
+                    'description' => 'Verify candidate credentials and documents',
+                    'icon' => 'file-alt',
+                    'color' => 'documentation',
+                    'url' => 'documentation.php'
+                ],
+                'medical' => [
+                    'title' => 'Medical Examination',
+                    'description' => 'Health assessment and fitness evaluation',
+                    'icon' => 'heartbeat',
+                    'color' => 'medical',
+                    'url' => 'medical.php'
+                ],
+                'physical' => [
+                    'title' => 'Physical Assessment',
+                    'description' => 'Physical fitness and endurance testing',
+                    'icon' => 'running',
+                    'color' => 'physical',
+                    'url' => 'physical.php'
+                ],
+                'sand_modelling' => [
+                    'title' => 'Sand Modelling',
+                    'description' => 'Spatial awareness and problem-solving assessment',
+                    'icon' => 'cubes',
+                    'color' => 'sand-modelling',
+                    'url' => 'sand_modelling.php'
+                ],
+                'interview' => [
+                    'title' => 'Board Interview',
+                    'description' => 'Final interview with the selection board',
+                    'icon' => 'comments',
+                    'color' => 'interview',
+                    'url' => 'board_interview.php'
+                ]
+            ];
+
+            $delay = 0.6;
+            foreach ($stages as $stage_key => $stage_info):
+                $is_active = $stageStatistics[$stage_key]['is_active'];
+                $total = $stageStatistics[$stage_key]['total'];
+                $delay += 0.1;
+            ?>
+            <div class="col-md-6 col-lg-4" style="animation-delay: <?php echo $delay; ?>s">
+                <?php if ($is_active): ?>
+                <a href="<?php echo $stage_info['url']; ?>" class="stage-card">
+                <?php else: ?>
+                <div class="stage-card" style="opacity: 0.7; cursor: not-allowed;">
+                <?php endif; ?>
+                    <div class="card-header <?php echo $stage_info['color']; ?>-header">
                         <div class="d-flex justify-content-between align-items-center">
-                            <span>Documentation</span>
-                            <i class="fas fa-file-alt"></i>
+                            <span><?php echo ucfirst($stage_key); ?></span>
+                            <i class="fas fa-<?php echo $stage_info['icon']; ?>"></i>
                         </div>
                     </div>
                     <div class="card-body text-center">
-                        <div class="stage-icon documentation-icon">
-                            <i class="fas fa-file-alt"></i>
+                        <div class="stage-icon <?php echo $stage_info['color']; ?>-icon">
+                            <?php if ($is_active): ?>
+                            <i class="fas fa-<?php echo $stage_info['icon']; ?>"></i>
+                            <?php else: ?>
+                            <i class="fas fa-lock"></i>
+                            <?php endif; ?>
                         </div>
-                        <h5 class="card-title">Documentation Stage</h5>
-                        <p class="card-text">Verify candidate credentials and documents</p>
+                        <h5 class="card-title"><?php echo $stage_info['title']; ?></h5>
+                        <p class="card-text"><?php echo $stage_info['description']; ?></p>
                         
+                        <?php if ($is_active): ?>
                         <div class="stage-progress">
                             <div class="progress">
                                 <?php 
-                                $doc_total = $stageStatistics['documentation']['total'] ?: 1;
-                                $doc_percent = ($doc_total / $doc_total) * 100;
+                                $total = $total ?: 1;
+                                $percent = ($total / $total) * 100;
                                 ?>
-                                <div class="progress-bar bg-info" role="progressbar" style="width: <?php echo $doc_percent; ?>%" 
-                                     aria-valuenow="<?php echo $doc_percent; ?>" aria-valuemin="0" aria-valuemax="100"></div>
+                                <div class="progress-bar bg-<?php echo $stage_info['color']; ?>" role="progressbar" 
+                                     style="width: <?php echo $percent; ?>%" 
+                                     aria-valuenow="<?php echo $percent; ?>" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100"></div>
                             </div>
                         </div>
                         
                         <div class="stage-stats">
                             <div class="stage-stat">
-                                <div class="stage-stat-number"><?php echo $stageStatistics['documentation']['total']; ?></div>
+                                <div class="stage-stat-number"><?php echo $total; ?></div>
                                 <div class="stage-stat-label">Total</div>
                             </div>
                         </div>
+                        <?php else: ?>
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <i class="fas fa-lock mr-2"></i> This stage is currently locked by the administrator.
+                        </div>
+                        <?php endif; ?>
                     </div>
+                <?php if ($is_active): ?>
                 </a>
+                <?php else: ?>
+                </div>
+                <?php endif; ?>
             </div>
-            
-            <!-- Medical Stage Card -->
-            <div class="col-md-6 col-lg-4" style="animation-delay: 0.7s">
-                <a href="medical.php" class="stage-card">
-                    <div class="card-header medical-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span>Medical</span>
-                            <i class="fas fa-heartbeat"></i>
-                        </div>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="stage-icon medical-icon">
-                            <i class="fas fa-heartbeat"></i>
-                        </div>
-                        <h5 class="card-title">Medical Examination</h5>
-                        <p class="card-text">Health assessment and fitness evaluation</p>
-                        
-                        <div class="stage-progress">
-                            <div class="progress">
-                                <?php 
-                                $med_total = $stageStatistics['medical']['total'] ?: 1;
-                                $med_percent = ($med_total / $med_total) * 100;
-                                ?>
-                                <div class="progress-bar bg-success" role="progressbar" style="width: <?php echo $med_percent; ?>%" 
-                                     aria-valuenow="<?php echo $med_percent; ?>" aria-valuemin="0" aria-valuemax="100"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="stage-stats">
-                            <div class="stage-stat">
-                                <div class="stage-stat-number"><?php echo $stageStatistics['medical']['total']; ?></div>
-                                <div class="stage-stat-label">Total</div>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            
-            <!-- Physical Stage Card -->
-            <div class="col-md-6 col-lg-4" style="animation-delay: 0.8s">
-                <a href="physical.php" class="stage-card">
-                    <div class="card-header physical-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span>Physical</span>
-                            <i class="fas fa-running"></i>
-                        </div>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="stage-icon physical-icon">
-                            <i class="fas fa-running"></i>
-                        </div>
-                        <h5 class="card-title">Physical Assessment</h5>
-                        <p class="card-text">Physical fitness and endurance testing</p>
-                        
-                        <div class="stage-progress">
-                            <div class="progress">
-                                <?php 
-                                $phys_total = $stageStatistics['physical']['total'] ?: 1;
-                                $phys_percent = ($phys_total / $phys_total) * 100;
-                                ?>
-                                <div class="progress-bar bg-warning" role="progressbar" style="width: <?php echo $phys_percent; ?>%" 
-                                     aria-valuenow="<?php echo $phys_percent; ?>" aria-valuemin="0" aria-valuemax="100"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="stage-stats">
-                            <div class="stage-stat">
-                                <div class="stage-stat-number"><?php echo $stageStatistics['physical']['total']; ?></div>
-                                <div class="stage-stat-label">Total</div>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            
-            <!-- Sand Modelling Stage Card -->
-            <div class="col-md-6 col-lg-4" style="animation-delay: 0.9s">
-                <a href="sand_modelling.php" class="stage-card">
-                    <div class="card-header sand-modelling-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span>Sand Modelling</span>
-                            <i class="fas fa-cubes"></i>
-                        </div>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="stage-icon sand-modelling-icon">
-                            <i class="fas fa-cubes"></i>
-                        </div>
-                        <h5 class="card-title">Sand Modelling</h5>
-                        <p class="card-text">Spatial awareness and problem-solving assessment</p>
-                        
-                        <div class="stage-progress">
-                            <div class="progress">
-                                <?php 
-                                $sand_total = $stageStatistics['sand_modelling']['total'] ?: 1;
-                                $sand_percent = ($sand_total / $sand_total) * 100;
-                                ?>
-                                <div class="progress-bar bg-danger" role="progressbar" style="width: <?php echo $sand_percent; ?>%" 
-                                     aria-valuenow="<?php echo $sand_percent; ?>" aria-valuemin="0" aria-valuemax="100"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="stage-stats">
-                            <div class="stage-stat">
-                                <div class="stage-stat-number"><?php echo $stageStatistics['sand_modelling']['total']; ?></div>
-                                <div class="stage-stat-label">Total</div>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            
-            <!-- Interview Stage Card -->
-            <div class="col-md-6 col-lg-4" style="animation-delay: 1.0s">
-                <a href="board_interview.php" class="stage-card">
-                    <div class="card-header interview-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span>Board Interview</span>
-                            <i class="fas fa-comments"></i>
-                        </div>
-                    </div>
-                    <div class="card-body text-center">
-                        <div class="stage-icon interview-icon">
-                            <i class="fas fa-comments"></i>
-                        </div>
-                        <h5 class="card-title">Board Interview</h5>
-                        <p class="card-text">Final interview with the selection board</p>
-                        
-                        <div class="stage-progress">
-                            <div class="progress">
-                                <?php 
-                                $int_total = $stageStatistics['interview']['total'] ?: 1;
-                                $int_percent = ($int_total / $int_total) * 100;
-                                ?>
-                                <div class="progress-bar bg-purple" role="progressbar" style="width: <?php echo $int_percent; ?>%; background-color: var(--interview-color);" 
-                                     aria-valuenow="<?php echo $int_percent; ?>" aria-valuemin="0" aria-valuemax="100"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="stage-stats">
-                            <div class="stage-stat">
-                                <div class="stage-stat-number"><?php echo $stageStatistics['interview']['total']; ?></div>
-                                <div class="stage-stat-label">Total</div>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            </div>
+            <?php endforeach; ?>
         </div>
         
         <div class="row mt-4">

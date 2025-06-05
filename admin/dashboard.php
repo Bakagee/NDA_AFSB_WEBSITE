@@ -345,6 +345,7 @@ $officers = getScreeningOfficers();
             align-items: flex-start;
             gap: 2.5rem;
             margin-top: 2rem;
+            padding: 0 1rem;
         }
 
         .cards-section {
@@ -352,6 +353,7 @@ $officers = getScreeningOfficers();
             display: flex;
             flex-direction: column;
             gap: 2.5rem;
+            width: 100%;
         }
 
         .cards-row {
@@ -359,6 +361,7 @@ $officers = getScreeningOfficers();
             flex-wrap: wrap;
             justify-content: center;
             gap: 2.5rem;
+            width: 100%;
         }
 
         .colorful-card {
@@ -380,6 +383,7 @@ $officers = getScreeningOfficers();
             padding: 1.5rem 1rem;
             color: #fff;
             background: #007A33;
+            flex: 1;
         }
         .colorful-card.card-green { background: #007A33; }
         .colorful-card.card-red { background: #C8102E; }
@@ -460,18 +464,78 @@ $officers = getScreeningOfficers();
             font-weight: 500;
             margin-left: 0.5rem;
         }
-        @media (max-width: 900px) {
+        @media (max-width: 1200px) {
+            .cards-row {
+                gap: 1.5rem;
+            }
+            
+            .colorful-card {
+                min-width: 200px;
+                max-width: 240px;
+            }
+        }
+        @media (max-width: 992px) {
             .dashboard-container {
-                flex-direction: column;
-                align-items: stretch;
+                gap: 1.5rem;
             }
-            .stages-card {
-                margin: 0 auto;
+            
+            .cards-section {
+                gap: 1.5rem;
             }
+            
+            .cards-row {
+                gap: 1rem;
+            }
+            
+            .colorful-card {
+                min-width: 180px;
+                max-width: 220px;
+                font-size: 1rem;
+            }
+        }
+        @media (max-width: 768px) {
+            .dashboard-container {
+                padding: 0 0.5rem;
+            }
+            
             .cards-row {
                 flex-direction: column;
-                gap: 1.5rem;
                 align-items: center;
+                gap: 1rem;
+            }
+            
+            .colorful-card {
+                min-width: 100%;
+                max-width: 100%;
+                margin: 0 1rem;
+            }
+            
+            .navbar-brand img {
+                height: 25px;
+            }
+            
+            .navbar .container {
+                padding: 0.5rem 1rem;
+            }
+        }
+        @media (max-width: 576px) {
+            .dashboard-container {
+                margin-top: 1rem;
+            }
+            
+            .colorful-card {
+                min-height: 80px;
+                padding: 1rem;
+                font-size: 0.95rem;
+            }
+            
+            .navbar-brand {
+                font-size: 0.9rem;
+            }
+            
+            .nav-link {
+                font-size: 0.9rem;
+                padding: 0.5rem 0.75rem;
             }
         }
     </style>
@@ -539,28 +603,6 @@ $officers = getScreeningOfficers();
                     <div class="colorful-card card-green" onclick="window.location.href='final_scores.php'">
                         <div class="card-title">Final Screened Candidates</div>
                     </div>
-                    <div class="colorful-card card-purple" onclick="window.location.href='#recent-activity'">
-                        <div class="card-title">Recent activity</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Recent Activity -->
-        <div class="row mt-4" id="recent-activity">
-            <div class="col-12">
-                <h4>Recent Activity</h4>
-                <div class="activity-log">
-                    <?php while ($activity = $activity_log->fetch_assoc()): ?>
-                    <div class="activity-item">
-                        <div class="d-flex justify-content-between">
-                            <strong><?php echo htmlspecialchars($activity['username']); ?></strong>
-                            <small class="text-muted"><?php echo date('M d, Y H:i', strtotime($activity['created_at'])); ?></small>
-                        </div>
-                        <div><?php echo htmlspecialchars($activity['activity_type']); ?></div>
-                        <small class="text-muted"><?php echo htmlspecialchars($activity['activity_details']); ?></small>
-                    </div>
-                    <?php endwhile; ?>
                 </div>
             </div>
         </div>
