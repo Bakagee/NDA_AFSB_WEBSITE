@@ -17,6 +17,33 @@ $success_message = $error_message = "";
 
 // Process form data when the form is submitted
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Handle profile image upload
+    $profile_image = 'default_officer.png'; // Default image
+    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
+        $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+        $max_size = 5 * 1024 * 1024; // 5MB
+        
+        if (!in_array($_FILES['profile_image']['type'], $allowed_types)) {
+            $error_message = "Invalid file type. Only JPG, PNG and GIF are allowed.";
+        } elseif ($_FILES['profile_image']['size'] > $max_size) {
+            $error_message = "File size too large. Maximum size is 5MB.";
+        } else {
+            $upload_dir = '../img/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            
+            $file_extension = pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION);
+            $new_filename = 'officer_' . time() . '_' . uniqid() . '.' . $file_extension;
+            $target_path = $upload_dir . $new_filename;
+            
+            if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $target_path)) {
+                $profile_image = $new_filename;
+            } else {
+                $error_message = "Failed to upload image. Please try again.";
+            }
+        }
+    }
     
     // Validate username
     if (empty(trim($_POST["username"]))) {
@@ -113,17 +140,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // Check for errors before inserting into database
     if (empty($username_err) && empty($password_err) && empty($rank_err) && 
-        empty($full_name_err) && empty($email_err) && empty($assigned_state_err)) {
+        empty($full_name_err) && empty($email_err) && empty($assigned_state_err) && empty($error_message)) {
         
         // Prepare an insert statement
-        $sql = "INSERT INTO officers (username, password, rank, full_name, email, phone, assigned_state, created_by) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO officers (username, password, rank, full_name, email, phone, assigned_state, created_by, profile_image) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         if ($stmt = $conn->prepare($sql)) {
             // Set parameters and bind variables
-            $stmt->bind_param("sssssssi", $param_username, $param_password, $param_rank, 
+            $stmt->bind_param("sssssssss", $param_username, $param_password, $param_rank, 
                               $param_full_name, $param_email, $param_phone, $param_assigned_state,
-                              $param_created_by);
+                              $param_created_by, $param_profile_image);
             
             $param_username = $username;
             $param_password = hashPassword($password); // Hash the password
@@ -133,6 +160,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $param_phone = $phone;
             $param_assigned_state = $assigned_state;
             $param_created_by = 1; // Assuming admin ID 1 is creating this officer
+            $param_profile_image = $profile_image;
             
             // Attempt to execute the prepared statement
             if ($stmt->execute()) {
@@ -325,6 +353,44 @@ $officers = getOfficers();
                 font-size: 1rem;
             }
         }
+        .profile-image-preview {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 20px;
+            border: 3px solid #1C6B4C;
+        }
+        
+        .profile-image-container {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        
+        .profile-image-upload {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: #1C6B4C;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .profile-image-upload:hover {
+            background: #15573A;
+        }
+        
+        .profile-image-upload input {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -417,7 +483,17 @@ $officers = getOfficers();
             
             <!-- Create New Officer Tab -->
             <div class="tab-pane fade" id="create" role="tabpanel">
-                <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post">
+                <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="post" enctype="multipart/form-data">
+                    <div class="form-group text-center">
+                        <div class="profile-image-container">
+                            <img src="../img/default_officer.png" alt="Profile Preview" class="profile-image-preview" id="profile-preview">
+                            <label class="profile-image-upload" title="Upload Profile Picture">
+                                <i class="fas fa-camera"></i>
+                                <input type="file" name="profile_image" accept="image/*" onchange="previewImage(this)">
+                            </label>
+                        </div>
+                    </div>
+                    
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
@@ -508,6 +584,18 @@ $officers = getOfficers();
                 window.location.hash = this.hash;
             });
         });
+
+        function previewImage(input) {
+            if (input.files && input.files[0]) {
+                var reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    document.getElementById('profile-preview').src = e.target.result;
+                }
+                
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
     </script>
 </body>
 </html>
