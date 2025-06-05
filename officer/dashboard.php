@@ -705,11 +705,6 @@ if ($hour >= 5 && $hour < 12) {
                             <i class="fas fa-users mr-1"></i> Candidates
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="reports.php">
-                            <i class="fas fa-chart-bar mr-1"></i> Reports
-                        </a>
-                    </li>
                     <li class="nav-item dropdown profile-dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                             <img src="../img/<?php echo htmlspecialchars($officer['profile_image'] ?: 'default_officer.png'); ?>" alt="Profile" class="profile-image" onerror="this.src='../img/default_officer.png'">
@@ -941,7 +936,6 @@ if ($hour >= 5 && $hour < 12) {
                     <ul class="footer-links">
                         <li><a href="dashboard.php"><i class="fas fa-tachometer-alt mr-1"></i> Dashboard</a></li>
                         <li><a href="candidates.php"><i class="fas fa-users mr-1"></i> Candidates</a></li>
-                        <li><a href="reports.php"><i class="fas fa-chart-bar mr-1"></i> Reports</a></li>
                         <li><a href="profile.php"><i class="fas fa-user-circle mr-1"></i> My Profile</a></li>
                     </ul>
                 </div>
