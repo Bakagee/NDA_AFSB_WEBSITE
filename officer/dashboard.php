@@ -718,14 +718,6 @@ if ($hour >= 5 && $hour < 12) {
                                     <small class="text-muted"><?php echo htmlspecialchars($officer['rank']); ?></small>
                                 </div>
                             </div>
-                            <div class="dropdown-divider"></div>
-                            <a class="dropdown-item" href="profile.php">
-                                <i class="fas fa-user-circle mr-2"></i> My Profile
-                            </a>
-                            <a class="dropdown-item" href="change_password.php">
-                                <i class="fas fa-key mr-2"></i> Change Password
-                            </a>
-                            <div class="dropdown-divider"></div>
                             <a class="dropdown-item btn-logout" href="../logout.php">
                                 <i class="fas fa-sign-out-alt mr-2"></i> Logout
                             </a>
