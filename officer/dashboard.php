@@ -134,13 +134,13 @@ function getStageStatistics($state) {
         }
     }
     
-    // Get stage statistics
-    $sql = "SELECT st.stage_name, COUNT(DISTINCT c.candidate_id) as count
-            FROM candidates c
-            JOIN states s ON c.state_id = s.id
-            JOIN candidate_stages cs ON c.candidate_id = cs.candidate_id
-            JOIN stages st ON cs.stage_id = st.id
-            WHERE (s.state_name = ? OR s.state_code = ?)
+    // Get stage statistics with LEFT JOIN to include stages with no candidates
+    $sql = "SELECT st.stage_name, COALESCE(COUNT(DISTINCT c.candidate_id), 0) as count
+            FROM stages st
+            LEFT JOIN candidate_stages cs ON st.id = cs.stage_id
+            LEFT JOIN candidates c ON cs.candidate_id = c.candidate_id
+            LEFT JOIN states s ON c.state_id = s.id
+            WHERE (s.state_name = ? OR s.state_code = ? OR s.state_name IS NULL)
             GROUP BY st.stage_name";
     
     $stmt = $conn->prepare($sql);
@@ -150,7 +150,7 @@ function getStageStatistics($state) {
     
     while ($row = $result->fetch_assoc()) {
         if (isset($stages[$row['stage_name']])) {
-            $stages[$row['stage_name']]['total'] = $row['count'];
+            $stages[$row['stage_name']]['total'] = (int)$row['count'];
         }
     }
     
@@ -185,7 +185,7 @@ function getStageStatistics($state) {
     $result = $stmt->get_result();
     
     if ($row = $result->fetch_assoc()) {
-        $stages['physical']['total'] = $row['count'];
+        $stages['physical']['total'] = (int)$row['count'];
     }
     
     $stmt->close();
@@ -860,8 +860,10 @@ if ($hour >= 5 && $hour < 12) {
                         <div class="stage-progress">
                             <div class="progress">
                                 <?php 
-                                $total = $total ?: 1;
-                                $percent = ($total / $total) * 100;
+                                $percent = 0; // Default to 0%
+                                if ($total > 0) {
+                                    $percent = 100; // If there are candidates, show 100%
+                                }
                                 ?>
                                 <div class="progress-bar bg-<?php echo $stage_info['color']; ?>" role="progressbar" 
                                      style="width: <?php echo $percent; ?>%" 
