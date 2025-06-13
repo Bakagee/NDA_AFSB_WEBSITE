@@ -1,6 +1,16 @@
 <?php
+// Start session
+session_start();
+
 // Include database connection
 require_once '../database_connection.php';
+
+// Check if user is logged in as admin
+requireAdminRole();
+
+// Initialize variables
+$username = $password = $rank = $full_name = $email = $phone = $assigned_state = $profile_image = "";
+$error_message = $success_message = "";
 
 // Function to validate form data
 function validateInput($data) {
@@ -10,172 +20,75 @@ function validateInput($data) {
     return $data;
 }
 
-// Initialize variables
-$username = $password = $rank = $full_name = $email = $phone = $assigned_state = "";
-$username_err = $password_err = $rank_err = $full_name_err = $email_err = $assigned_state_err = "";
-$success_message = $error_message = "";
-
-// Process form data when the form is submitted
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Handle profile image upload
-    $profile_image = 'default_officer.png'; // Default image
-    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
-        $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
-        $max_size = 5 * 1024 * 1024; // 5MB
+// Process form submission
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_officer'])) {
+    // Initialize database connection
+    $conn = connectDB();
+    
+    // Validate and sanitize input
+    $username = validateInput($_POST['username'] ?? '');
+    $password = validateInput($_POST['password'] ?? '');
+    $rank = validateInput($_POST['rank'] ?? '');
+    $full_name = validateInput($_POST['full_name'] ?? '');
+    $email = validateInput($_POST['email'] ?? '');
+    $phone = validateInput($_POST['phone'] ?? '');
+    $assigned_state = validateInput($_POST['assigned_state'] ?? '');
+    $profile_image = 'default_officer.png'; // Default profile image
+    
+    // Validate required fields
+    if (empty($username) || empty($password) || empty($rank) || empty($full_name) || 
+        empty($email) || empty($phone) || empty($assigned_state)) {
+        $error_message = "All fields are required.";
+    } else {
+        // Check if username already exists
+        $check_sql = "SELECT officer_id FROM officers WHERE username = ?";
+        $check_stmt = $conn->prepare($check_sql);
+        $check_stmt->bind_param("s", $username);
+        $check_stmt->execute();
+        $check_stmt->store_result();
         
-        if (!in_array($_FILES['profile_image']['type'], $allowed_types)) {
-            $error_message = "Invalid file type. Only JPG, PNG and GIF are allowed.";
-        } elseif ($_FILES['profile_image']['size'] > $max_size) {
-            $error_message = "File size too large. Maximum size is 5MB.";
+        if ($check_stmt->num_rows > 0) {
+            $error_message = "This username is already taken.";
         } else {
-            $upload_dir = '../img/';
-            if (!file_exists($upload_dir)) {
-                mkdir($upload_dir, 0777, true);
-            }
+            // Prepare insert statement
+            $sql = "INSERT INTO officers (username, password, rank, full_name, email, phone, 
+                    assigned_state, created_by, profile_image) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
-            $file_extension = pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION);
-            $new_filename = 'officer_' . time() . '_' . uniqid() . '.' . $file_extension;
-            $target_path = $upload_dir . $new_filename;
+            $stmt = $conn->prepare($sql);
             
-            if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $target_path)) {
-                $profile_image = $new_filename;
-            } else {
-                $error_message = "Failed to upload image. Please try again.";
-            }
-        }
-    }
-    
-    // Validate username
-    if (empty(trim($_POST["username"]))) {
-        $username_err = "Please enter a username.";
-    } else {
-        // Prepare a select statement to check if username exists
-        $conn = connectDB();
-        $sql = "SELECT officer_id FROM officers WHERE username = ?";
-        
-        if ($stmt = $conn->prepare($sql)) {
-            $stmt->bind_param("s", $param_username);
-            $param_username = trim($_POST["username"]);
-            
-            if ($stmt->execute()) {
-                $stmt->store_result();
+            if ($stmt) {
+                // Set parameters and bind variables
+                $stmt->bind_param("sssssssss", $param_username, $param_password, $param_rank, 
+                                $param_full_name, $param_email, $param_phone, $param_assigned_state,
+                                $param_created_by, $param_profile_image);
                 
-                if ($stmt->num_rows > 0) {
-                    $username_err = "This username is already taken.";
+                $param_username = $username;
+                $param_password = hashPassword($password);
+                $param_rank = $rank;
+                $param_full_name = $full_name;
+                $param_email = $email;
+                $param_phone = $phone;
+                $param_assigned_state = $assigned_state;
+                $param_created_by = $_SESSION['user_id'];
+                $param_profile_image = $profile_image;
+                
+                // Attempt to execute the prepared statement
+                if ($stmt->execute()) {
+                    $success_message = "Officer account created successfully!";
+                    // Clear form values after successful submission
+                    $username = $password = $rank = $full_name = $email = $phone = $assigned_state = "";
                 } else {
-                    $username = validateInput($_POST["username"]);
+                    $error_message = "Something went wrong. Please try again later. Error: " . $stmt->error;
                 }
-            } else {
-                $error_message = "Oops! Something went wrong. Please try again later.";
-            }
-            
-            $stmt->close();
-        }
-    }
-    
-    // Validate password
-    if (empty(trim($_POST["password"]))) {
-        $password_err = "Please enter a password.";     
-    } elseif (strlen(trim($_POST["password"])) < 6) {
-        $password_err = "Password must have at least 6 characters.";
-    } else {
-        $password = trim($_POST["password"]);
-    }
-    
-    // Validate rank
-    if (empty(trim($_POST["rank"]))) {
-        $rank_err = "Please enter rank.";     
-    } else {
-        $rank = validateInput($_POST["rank"]);
-    }
-    
-    // Validate full name
-    if (empty(trim($_POST["full_name"]))) {
-        $full_name_err = "Please enter full name.";     
-    } else {
-        $full_name = validateInput($_POST["full_name"]);
-    }
-    
-    // Validate email
-    if (empty(trim($_POST["email"]))) {
-        $email_err = "Please enter email.";     
-    } elseif (!filter_var(trim($_POST["email"]), FILTER_VALIDATE_EMAIL)) {
-        $email_err = "Please enter a valid email address.";
-    } else {
-        // Prepare a select statement to check if email exists
-        $conn = connectDB();
-        $sql = "SELECT officer_id FROM officers WHERE email = ?";
-        
-        if ($stmt = $conn->prepare($sql)) {
-            $stmt->bind_param("s", $param_email);
-            $param_email = trim($_POST["email"]);
-            
-            if ($stmt->execute()) {
-                $stmt->store_result();
                 
-                if ($stmt->num_rows > 0) {
-                    $email_err = "This email is already registered.";
-                } else {
-                    $email = validateInput($_POST["email"]);
-                }
+                // Close statement
+                $stmt->close();
             } else {
-                $error_message = "Oops! Something went wrong. Please try again later.";
+                $error_message = "Error preparing statement: " . $conn->error;
             }
-            
-            $stmt->close();
         }
-    }
-    
-    // Validate phone (optional)
-    if (!empty(trim($_POST["phone"]))) {
-        $phone = validateInput($_POST["phone"]);
-    }
-    
-    // Validate assigned state
-    if (empty(trim($_POST["assigned_state"]))) {
-        $assigned_state_err = "Please select assigned state.";     
-    } else {
-        $assigned_state = validateInput($_POST["assigned_state"]);
-    }
-    
-    // Check for errors before inserting into database
-    if (empty($username_err) && empty($password_err) && empty($rank_err) && 
-        empty($full_name_err) && empty($email_err) && empty($assigned_state_err) && empty($error_message)) {
-        
-        // Prepare an insert statement
-        $sql = "INSERT INTO officers (username, password, rank, full_name, email, phone, assigned_state, created_by, profile_image) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        if ($stmt = $conn->prepare($sql)) {
-            // Set parameters and bind variables
-            $stmt->bind_param("sssssssss", $param_username, $param_password, $param_rank, 
-                              $param_full_name, $param_email, $param_phone, $param_assigned_state,
-                              $param_created_by, $param_profile_image);
-            
-            $param_username = $username;
-            $param_password = hashPassword($password); // Hash the password
-            $param_rank = $rank;
-            $param_full_name = $full_name;
-            $param_email = $email;
-            $param_phone = $phone;
-            $param_assigned_state = $assigned_state;
-            $param_created_by = 1; // Assuming admin ID 1 is creating this officer
-            $param_profile_image = $profile_image;
-            
-            // Attempt to execute the prepared statement
-            if ($stmt->execute()) {
-                // Officer created successfully
-                $success_message = "Officer account created successfully!";
-                
-                // Clear form values after successful submission
-                $username = $password = $rank = $full_name = $email = $phone = $assigned_state = "";
-            } else {
-                $error_message = "Something went wrong. Please try again later. Error: " . $stmt->error;
-            }
-            
-            // Close statement
-            $stmt->close();
-        }
+        $check_stmt->close();
     }
     
     // Close connection
@@ -452,27 +365,26 @@ $officers = getOfficers();
                                         <?php echo $officer['is_active'] ? 'Active' : 'Inactive'; ?>
                                     </span>
                                 </td>
-                                <td class="action-buttons">
-                                    <a href="edit_officer.php?id=<?php echo $officer['officer_id']; ?>" class="btn btn-sm btn-primary">
-                                        <i class="fas fa-edit"></i>
-                                    </a>
-                                    <?php if ($officer['is_active']): ?>
-                                    <form method="post" style="display: inline;">
-                                        <input type="hidden" name="officer_id" value="<?php echo $officer['officer_id']; ?>">
-                                        <input type="hidden" name="action" value="deactivate">
-                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to deactivate this officer?')">
-                                            <i class="fas fa-ban"></i>
-                                        </button>
-                                    </form>
-                                    <?php else: ?>
-                                    <form method="post" style="display: inline;">
-                                        <input type="hidden" name="officer_id" value="<?php echo $officer['officer_id']; ?>">
-                                        <input type="hidden" name="action" value="activate">
-                                        <button type="submit" class="btn btn-sm btn-success">
-                                            <i class="fas fa-check"></i>
-                                        </button>
-                                    </form>
-                                    <?php endif; ?>
+                                <td>
+                                    <div class="action-buttons">
+                                        <?php if ($officer['is_active']): ?>
+                                            <form method="post" style="display: inline;">
+                                                <input type="hidden" name="officer_id" value="<?php echo $officer['officer_id']; ?>">
+                                                <input type="hidden" name="action" value="deactivate">
+                                                <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Are you sure you want to deactivate this officer?')">
+                                                    <i class="fas fa-user-slash"></i> Deactivate
+                                                </button>
+                                            </form>
+                                        <?php else: ?>
+                                            <form method="post" style="display: inline;">
+                                                <input type="hidden" name="officer_id" value="<?php echo $officer['officer_id']; ?>">
+                                                <input type="hidden" name="action" value="activate">
+                                                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Are you sure you want to activate this officer?')">
+                                                    <i class="fas fa-user-check"></i> Activate
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -498,15 +410,13 @@ $officers = getOfficers();
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Username</label>
-                                <input type="text" name="username" class="form-control <?php echo (!empty($username_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $username; ?>">
-                                <span class="invalid-feedback"><?php echo $username_err; ?></span>
+                                <input type="text" name="username" class="form-control" value="<?php echo $username; ?>">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Password</label>
-                                <input type="password" name="password" class="form-control <?php echo (!empty($password_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $password; ?>">
-                                <span class="invalid-feedback"><?php echo $password_err; ?></span>
+                                <input type="password" name="password" class="form-control">
                             </div>
                         </div>
                     </div>
@@ -515,15 +425,13 @@ $officers = getOfficers();
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Rank</label>
-                                <input type="text" name="rank" class="form-control <?php echo (!empty($rank_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $rank; ?>">
-                                <span class="invalid-feedback"><?php echo $rank_err; ?></span>
+                                <input type="text" name="rank" class="form-control" value="<?php echo $rank; ?>">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Full Name</label>
-                                <input type="text" name="full_name" class="form-control <?php echo (!empty($full_name_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $full_name; ?>">
-                                <span class="invalid-feedback"><?php echo $full_name_err; ?></span>
+                                <input type="text" name="full_name" class="form-control" value="<?php echo $full_name; ?>">
                             </div>
                         </div>
                     </div>
@@ -532,8 +440,7 @@ $officers = getOfficers();
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Email</label>
-                                <input type="email" name="email" class="form-control <?php echo (!empty($email_err)) ? 'is-invalid' : ''; ?>" value="<?php echo $email; ?>">
-                                <span class="invalid-feedback"><?php echo $email_err; ?></span>
+                                <input type="email" name="email" class="form-control" value="<?php echo $email; ?>">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -546,7 +453,7 @@ $officers = getOfficers();
                     
                     <div class="form-group">
                         <label>Assigned State</label>
-                        <select name="assigned_state" class="form-control <?php echo (!empty($assigned_state_err)) ? 'is-invalid' : ''; ?>">
+                        <select name="assigned_state" class="form-control">
                             <option value="">Select State</option>
                             <?php foreach ($states as $state): ?>
                             <option value="<?php echo $state; ?>" <?php echo ($assigned_state == $state) ? 'selected' : ''; ?>>
@@ -554,11 +461,10 @@ $officers = getOfficers();
                             </option>
                             <?php endforeach; ?>
                         </select>
-                        <span class="invalid-feedback"><?php echo $assigned_state_err; ?></span>
                     </div>
                     
                     <div class="form-group">
-                        <button type="submit" class="btn btn-primary">Create Officer Account</button>
+                        <button type="submit" name="create_officer" class="btn btn-primary">Create Officer Account</button>
                     </div>
                 </form>
             </div>
@@ -599,4 +505,3 @@ $officers = getOfficers();
     </script>
 </body>
 </html>
-</qodoArtifact>
